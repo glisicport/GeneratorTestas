@@ -1,0 +1,13 @@
+{
+  "chapters" : [ {
+    "name" : "pog1",
+    "questions" : [ {
+      "code" : null,
+      "question" : "pitanje 1",
+      "options" : [ "opcija 1", "opcija 2" ],
+      "correct_answer" : "opcija 1",
+      "type" : "multiple_choice"
+    } ]
+  } ],
+  "name" : "sablon2.json"
+}

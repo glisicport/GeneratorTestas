@@ -1,0 +1,28 @@
+{
+  "chapters" : [ {
+    "name" : "pogl1",
+    "questions" : [ {
+      "code" : null,
+      "question" : "luka je",
+      "options" : [ "car", "genije", "majmun" ],
+      "correct_answer" : "car",
+      "type" : "multiple_choice"
+    }, {
+      "code" : null,
+      "question" : "maricka bitka je bila ___ godine.",
+      "options" : [ ],
+      "correct_answer" : "1932",
+      "type" : "fill_in_the_blank"
+    } ]
+  }, {
+    "name" : "pog2",
+    "questions" : [ {
+      "code" : null,
+      "question" : "zdravo",
+      "options" : [ "1", "3" ],
+      "correct_answer" : "1",
+      "type" : "multiple_choice"
+    } ]
+  } ],
+  "name" : "sablon.json"
+}
