@@ -1,25 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.tfzr</groupId>
     <artifactId>test-generator</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
 
     <properties>
+        <!-- Embed resources with UTF-8 encoding and compile for Java 11 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
+        <!-- JSON serialization/deserialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>2.15.0</version>
         </dependency>
+
+        <!-- iText 9 (PDF generation) -->
         <dependency>
             <groupId>com.itextpdf</groupId>
             <artifactId>kernel</artifactId>
@@ -38,6 +44,7 @@
     </dependencies>
 
     <build>
+        <!-- Ensure resources (images, fonts) from src/main/resources are packaged into the JAR -->
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
@@ -50,7 +57,9 @@
                 </includes>
             </resource>
         </resources>
+
         <plugins>
+            <!-- Compiler plugin targeting Java 11 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -60,13 +69,16 @@
                     <target>11</target>
                 </configuration>
             </plugin>
+
+            <!-- Shade plugin to produce two executable JARs: test-generator.jar and question-manager.jar -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.2.4</version>
                 <executions>
+                    <!-- Execution for "test-generator" main class -->
                     <execution>
-                        <id>test-generator</id>
+                        <id>shade-test-generator</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
@@ -77,11 +89,14 @@
                                     <mainClass>gui.TestGeneratorGUI</mainClass>
                                 </transformer>
                             </transformers>
+                            <!-- This will produce target/test-generator.jar -->
                             <finalName>test-generator</finalName>
                         </configuration>
                     </execution>
+
+                    <!-- Execution for "question-manager" main class -->
                     <execution>
-                        <id>question-manager</id>
+                        <id>shade-question-manager</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
@@ -92,6 +107,7 @@
                                     <mainClass>gui.QuestionManagerGUI</mainClass>
                                 </transformer>
                             </transformers>
+                            <!-- This will produce target/question-manager.jar -->
                             <finalName>question-manager</finalName>
                         </configuration>
                     </execution>
@@ -99,57 +115,4 @@
             </plugin>
         </plugins>
     </build>
-    <profiles>
-        <profile>
-            <id>test-generator</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-shade-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <phase>package</phase>
-                                <goals><goal>shade</goal></goals>
-                                <configuration>
-                                    <transformers>
-                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                            <mainClass>gui.TestGeneratorGUI</mainClass>
-                                        </transformer>
-                                    </transformers>
-                                    <finalName>test-generator</finalName>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>question-manager</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-shade-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <phase>package</phase>
-                                <goals><goal>shade</goal></goals>
-                                <configuration>
-                                    <transformers>
-                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                            <mainClass>gui.QuestionManagerGUI</mainClass>
-                                        </transformer>
-                                    </transformers>
-                                    <finalName>question-manager</finalName>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>

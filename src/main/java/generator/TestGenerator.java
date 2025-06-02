@@ -1,6 +1,8 @@
 package generator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.itextpdf.io.font.PdfEncodings;
+import com.itextpdf.io.image.ImageData;
 import com.itextpdf.kernel.font.PdfFontFactory;
 import com.itextpdf.kernel.geom.PageSize;
 import com.itextpdf.kernel.pdf.PdfDocument;
@@ -15,9 +17,12 @@ import com.itextpdf.layout.borders.Border;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.layout.element.Image;
+import generator.TemplateModel;
+import generator.TemplateModel.QuestionTemplate;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 import java.util.List;
 
@@ -47,15 +52,17 @@ public class TestGenerator {
             throw new IllegalArgumentException("Template path not set");
         }
 
-        // Load template
+        // Load template JSON
         ObjectMapper objectMapper = new ObjectMapper();
-        TemplateModel templateModel = objectMapper.readValue(new File(templatePath), TemplateModel.class);
+        TemplateModel templateModel = objectMapper.readValue(
+                new java.io.File(templatePath),
+                TemplateModel.class
+        );
 
         // Filter questions based on selected chapters
-        ArrayList<TemplateModel.QuestionTemplate> availableQuestions = new ArrayList<>();
+        ArrayList<QuestionTemplate> availableQuestions = new ArrayList<>();
         for (TemplateModel.Chapter chapter : templateModel.getChapters()) {
             String chapterName = chapter.getName().trim();
-            
             boolean isChapterSelected = false;
             for (String selectedChapter : selectedChapters) {
                 if (selectedChapter.trim().equals(chapterName)) {
@@ -63,23 +70,18 @@ public class TestGenerator {
                     break;
                 }
             }
-
             if (isChapterSelected && chapter.getQuestions() != null) {
-                for (TemplateModel.QuestionTemplate question : chapter.getQuestions()) {
+                for (QuestionTemplate question : chapter.getQuestions()) {
                     if (question.getType() == null || question.getQuestion() == null) {
                         continue;
                     }
-
-                    // For multiple choice questions, ensure options exist
                     if (question.getType().equals("multiple_choice")) {
                         if (question.getOptions() == null || question.getOptions().isEmpty()) {
                             continue;
                         }
                     }
-
-                    // For fill in the blank questions
                     if (question.getType().equals("fill_in_the_blank")) {
-                        question.setQuestion(question.getQuestion().replace("___","______________________"));
+                        question.setQuestion(question.getQuestion().replace("___", "______________________"));
                         if (question.getCorrect_answers() == null && question.getCorrect_answer() != null) {
                             List<String> answers = new ArrayList<>();
                             answers.add(question.getCorrect_answer());
@@ -88,7 +90,6 @@ public class TestGenerator {
                             continue;
                         }
                     }
-
                     availableQuestions.add(question);
                 }
             }
@@ -99,7 +100,6 @@ public class TestGenerator {
                     "Nema dostupnih pitanja u odabranim poglavljima."
             );
         }
-
         if (numQuestions > availableQuestions.size()) {
             throw new IllegalArgumentException(
                     "Zahtevano je " + numQuestions + " pitanja, ali je dostupno samo " +
@@ -107,14 +107,10 @@ public class TestGenerator {
             );
         }
 
-        // Randomly select questions with code question limitation
-        ArrayList<TemplateModel.QuestionTemplate> selectedTemplates = new ArrayList<>();
-        ArrayList<TemplateModel.QuestionTemplate> codeQuestions = new ArrayList<>();
-        ArrayList<TemplateModel.QuestionTemplate> nonCodeQuestions = new ArrayList<>();
-        Random random = new Random();
-
-        // Separate code and non-code questions
-        for (TemplateModel.QuestionTemplate question : availableQuestions) {
+        // Randomly select questions, enforcing one code question per 8 questions
+        ArrayList<QuestionTemplate> codeQuestions = new ArrayList<>();
+        ArrayList<QuestionTemplate> nonCodeQuestions = new ArrayList<>();
+        for (QuestionTemplate question : availableQuestions) {
             if (question.getCode() != null && !question.getCode().isEmpty()) {
                 codeQuestions.add(question);
             } else {
@@ -122,74 +118,85 @@ public class TestGenerator {
             }
         }
 
-        // Calculate number of code questions needed (1 per 8 questions)
         int codeQuestionsNeeded = Math.max(1, numQuestions / 8);
+        ArrayList<QuestionTemplate> selectedTemplates = new ArrayList<>();
+        Random random = new Random();
 
-        // Add code questions if available
-        if (!codeQuestions.isEmpty()) {
-            for (int i = 0; i < codeQuestionsNeeded && !codeQuestions.isEmpty(); i++) {
-                int randomCodeIndex = random.nextInt(codeQuestions.size());
-                selectedTemplates.add(codeQuestions.remove(randomCodeIndex));
-            }
+        // Pick code questions
+        for (int i = 0; i < codeQuestionsNeeded && !codeQuestions.isEmpty(); i++) {
+            int idx = random.nextInt(codeQuestions.size());
+            selectedTemplates.add(codeQuestions.remove(idx));
         }
-
-        // Fill remaining slots with non-code questions
-        int remainingQuestions = numQuestions - selectedTemplates.size();
-        for (int i = 0; i < remainingQuestions && !nonCodeQuestions.isEmpty(); i++) {
-            int index = random.nextInt(nonCodeQuestions.size());
-            selectedTemplates.add(nonCodeQuestions.remove(index));
+        // Fill remaining with non-code
+        int remainingSlots = numQuestions - selectedTemplates.size();
+        for (int i = 0; i < remainingSlots && !nonCodeQuestions.isEmpty(); i++) {
+            int idx = random.nextInt(nonCodeQuestions.size());
+            selectedTemplates.add(nonCodeQuestions.remove(idx));
         }
-
-        // Shuffle the final selection
         Collections.shuffle(selectedTemplates, random);
 
-        // Create PDF document
-        try (PdfWriter pdfWriter = new PdfWriter(outputPath);
-             PdfDocument pdfDocument = new PdfDocument(pdfWriter);
-             Document document = new Document(pdfDocument, PageSize.A4)) {
+        // Now create the PDF
+        try (
+                PdfWriter pdfWriter = new PdfWriter(outputPath);
+                PdfDocument pdfDocument = new PdfDocument(pdfWriter);
+                Document document = new Document(pdfDocument, PageSize.A4)
+        ) {
+            document.setMargins(36, 36, 36, 36);
 
-            // Set margins to use more of the page
-            document.setMargins(36, 36, 36, 36); // 0.5 inch margins all around
+            // === Updated font loading: load from classpath instead of file system ===
+            // Make sure the .ttf files are under src/main/resources/fonts/ so that they end up in /fonts/ in the JAR.
+            PdfFont titleFont = PdfFontFactory.createFont(
+                    "/fonts/Roboto-Bold.ttf",
+                    PdfEncodings.IDENTITY_H
 
-            // Load custom fonts
-            PdfFont titleFont = PdfFontFactory.createFont("src/main/resources/fonts/Roboto-Bold.ttf");
-            PdfFont bodyFont = PdfFontFactory.createFont("src/main/resources/fonts/Roboto-Regular.ttf");
-            PdfFont codeFont = PdfFontFactory.createFont("src/main/resources/fonts/RobotoMono-Regular.ttf");
-
-            // Add header to first page
-            document.add(createHeader(titleFont, testType, subjectName));
-
-            // Add decorative line
-            SolidLine line = new SolidLine(1.5f);
-            line.setColor(new DeviceRgb(52, 152, 219));
-            document.add(new LineSeparator(line)
-                    .setMarginTop(10)
             );
+            PdfFont bodyFont = PdfFontFactory.createFont(
+                    "/fonts/Roboto-Regular.ttf",
+                    PdfEncodings.IDENTITY_H
 
-            // Process questions by filling columns based on available space
-            float pageHeight = document.getPdfDocument().getDefaultPageSize().getHeight()
+            );
+            PdfFont codeFont = PdfFontFactory.createFont(
+                    "/fonts/RobotoMono-Regular.ttf",
+                    PdfEncodings.IDENTITY_H
+
+            );
+            // ======================================================================
+
+            // Add header, decorative line, etc.
+            document.add(createHeader(titleFont, testType, subjectName));
+            com.itextpdf.kernel.pdf.canvas.draw.SolidLine line =
+                    new com.itextpdf.kernel.pdf.canvas.draw.SolidLine(1.5f);
+            line.setColor(new DeviceRgb(52, 152, 219));
+            document.add(new LineSeparator(line).setMarginTop(10));
+
+            // Compute page/column dimensions
+            float usablePageHeight = document.getPdfDocument().getDefaultPageSize().getHeight()
                     - document.getTopMargin()
                     - document.getBottomMargin()
-                    - 180; // Reduced from 200
-
-            float columnWidth = (document.getPdfDocument().getDefaultPageSize().getWidth()
+                    - 180;
+            float usableColumnWidth = (document.getPdfDocument().getDefaultPageSize().getWidth()
                     - document.getLeftMargin()
                     - document.getRightMargin()
-                    - 20) / 2; // Divide by 2 for two columns, subtract spacing
+                    - 20) / 2;
 
-            int currentQuestion = 0;
-
-            // Pre-calculate heights and sort questions
-            List<QuestionWithHeight> questionsWithHeight = new ArrayList<>();
+            // Estimate heights and separate code vs. non-code for spacing
+            class QuestionWithHeight {
+                QuestionTemplate question;
+                float height;
+                int index;
+                QuestionWithHeight(QuestionTemplate q, float h, int i) {
+                    this.question = q;
+                    this.height = h;
+                    this.index = i;
+                }
+            }
             List<QuestionWithHeight> codeQuestionsWithHeight = new ArrayList<>();
             List<QuestionWithHeight> regularQuestionsWithHeight = new ArrayList<>();
-
             for (int i = 0; i < selectedTemplates.size(); i++) {
-                TemplateModel.QuestionTemplate question = selectedTemplates.get(i);
-                float height = estimateContentHeight(question);
-                QuestionWithHeight qwh = new QuestionWithHeight(question, height, i);
-
-                if (question.getCode() != null && !question.getCode().isEmpty()) {
+                QuestionTemplate q = selectedTemplates.get(i);
+                float h = estimateContentHeight(q);
+                QuestionWithHeight qwh = new QuestionWithHeight(q, h, i);
+                if (q.getCode() != null && !q.getCode().isEmpty()) {
                     codeQuestionsWithHeight.add(qwh);
                 } else {
                     regularQuestionsWithHeight.add(qwh);
@@ -197,81 +204,72 @@ public class TestGenerator {
             }
 
             int totalQuestions = selectedTemplates.size();
-            int codeQuestionCount = codeQuestionsWithHeight.size();
-            int spacingBetweenCode = Math.max(3, totalQuestions / (codeQuestionCount + 1));
+            int codeCount = codeQuestionsWithHeight.size();
+            int spacingBetweenCode = Math.max(3, totalQuestions / (codeCount + 1));
 
-            int regularIndex = 0;
-            int codeIndex = 0;
-            int questionsUntilNextCode = spacingBetweenCode;
-
-            while (regularIndex < regularQuestionsWithHeight.size() ||
-                   codeIndex < codeQuestionsWithHeight.size()) {
-
-                while (questionsUntilNextCode > 0 && regularIndex < regularQuestionsWithHeight.size()) {
-                    questionsWithHeight.add(regularQuestionsWithHeight.get(regularIndex++));
+            List<QuestionWithHeight> questionsWithHeight = new ArrayList<>();
+            int regIdx = 0, codeIdx = 0, questionsUntilNextCode = spacingBetweenCode;
+            while (regIdx < regularQuestionsWithHeight.size() || codeIdx < codeQuestionsWithHeight.size()) {
+                while (questionsUntilNextCode > 0 && regIdx < regularQuestionsWithHeight.size()) {
+                    questionsWithHeight.add(regularQuestionsWithHeight.get(regIdx++));
                     questionsUntilNextCode--;
                 }
-
-                if (codeIndex < codeQuestionsWithHeight.size()) {
-                    questionsWithHeight.add(codeQuestionsWithHeight.get(codeIndex++));
+                if (codeIdx < codeQuestionsWithHeight.size()) {
+                    questionsWithHeight.add(codeQuestionsWithHeight.get(codeIdx++));
                     questionsUntilNextCode = spacingBetweenCode;
                 }
-
-                if (codeIndex >= codeQuestionsWithHeight.size()) {
-                    while (regularIndex < regularQuestionsWithHeight.size()) {
-                        questionsWithHeight.add(regularQuestionsWithHeight.get(regularIndex++));
+                if (codeIdx >= codeQuestionsWithHeight.size()) {
+                    while (regIdx < regularQuestionsWithHeight.size()) {
+                        questionsWithHeight.add(regularQuestionsWithHeight.get(regIdx++));
                     }
                 }
             }
 
-            float maxColumnHeight = pageHeight - 30; // Reduced from 40
+            float maxColumnHeight = usablePageHeight - 30;
 
             while (!questionsWithHeight.isEmpty()) {
                 Table mainTable = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
-                        .setMarginTop(15) // Reduced from 20
+                        .setMarginTop(15)
                         .setWidth(UnitValue.createPercentValue(100));
 
-                Cell leftColumn = new Cell().setBorder(null).setPadding(8); // Reduced from 10
-                List<QuestionWithHeight> leftColumnQuestions = new ArrayList<>();
+                Cell leftColumn = new Cell().setBorder(null).setPadding(8);
+                List<QuestionWithHeight> leftColQs = new ArrayList<>();
                 float leftHeight = 0;
-
-                Iterator<QuestionWithHeight> leftIt = questionsWithHeight.iterator();
-                while (leftIt.hasNext()) {
-                    QuestionWithHeight qwh = leftIt.next();
+                Iterator<QuestionWithHeight> itLeft = questionsWithHeight.iterator();
+                while (itLeft.hasNext()) {
+                    QuestionWithHeight qwh = itLeft.next();
                     if (leftHeight + qwh.height <= maxColumnHeight) {
-                        leftColumnQuestions.add(qwh);
+                        leftColQs.add(qwh);
                         leftHeight += qwh.height;
-                        leftIt.remove();
+                        itLeft.remove();
                     } else {
                         break;
                     }
                 }
 
-                Cell rightColumn = new Cell().setBorder(null).setPadding(8); // Reduced from 10
-                List<QuestionWithHeight> rightColumnQuestions = new ArrayList<>();
+                Cell rightColumn = new Cell().setBorder(null).setPadding(8);
+                List<QuestionWithHeight> rightColQs = new ArrayList<>();
                 float rightHeight = 0;
-
-                Iterator<QuestionWithHeight> rightIt = questionsWithHeight.iterator();
-                while (rightIt.hasNext()) {
-                    QuestionWithHeight qwh = rightIt.next();
+                Iterator<QuestionWithHeight> itRight = questionsWithHeight.iterator();
+                while (itRight.hasNext()) {
+                    QuestionWithHeight qwh = itRight.next();
                     if (rightHeight + qwh.height <= maxColumnHeight) {
-                        rightColumnQuestions.add(qwh);
+                        rightColQs.add(qwh);
                         rightHeight += qwh.height;
-                        rightIt.remove();
+                        itRight.remove();
                     } else {
                         break;
                     }
                 }
 
-                leftColumnQuestions.sort(Comparator.comparingInt(q -> q.index));
-                rightColumnQuestions.sort(Comparator.comparingInt(q -> q.index));
+                leftColQs.sort(Comparator.comparingInt(q -> q.index));
+                rightColQs.sort(Comparator.comparingInt(q -> q.index));
 
-                for (QuestionWithHeight qwh : leftColumnQuestions) {
+                for (QuestionWithHeight qwh : leftColQs) {
                     addQuestionToCell(leftColumn, qwh.question, qwh.index + 1,
                             titleFont, bodyFont, codeFont);
                 }
-
-                for (QuestionWithHeight qwh : rightColumnQuestions) {
+                for (QuestionWithHeight qwh : rightColQs) {
                     addQuestionToCell(rightColumn, qwh.question, qwh.index + 1,
                             titleFont, bodyFont, codeFont);
                 }
@@ -288,7 +286,6 @@ public class TestGenerator {
             System.out.println("PDF generisann.");
         }
     }
-
     private static float estimateContentHeight(TemplateModel.QuestionTemplate template) {
         float totalHeight = 0;
         float lineHeight = 14; // Base line height
@@ -458,11 +455,21 @@ public class TestGenerator {
                 .setWidth(UnitValue.createPercentValue(100))
                 .setMarginBottom(15);
 
-        // Add left faculty logo
-        Image leftLogo = new Image(ImageDataFactory.create("src/main/resources/imgs/tfzr.png"));
-        leftLogo.setWidth(90);
-        leftLogo.setHeight(90);
+        // Učitaj logo iz classpath-a (src/main/resources/imgs/tfzr.png)
+        InputStream logoStream = TestGenerator.class.getResourceAsStream("/imgs/tfzr.png");
+        if (logoStream == null) {
+            throw new IllegalStateException("Nije pronađen /imgs/tfzr.png u JAR-u");
+        }
+        byte[] logoBytes;
+        try (InputStream is = logoStream) {
+            logoBytes = is.readAllBytes();
+        }
+        ImageData logoData = ImageDataFactory.create(logoBytes);
 
+        // Leva fakultetska ikona
+        Image leftLogo = new Image(logoData)
+                .setWidth(90)
+                .setHeight(90);
         Cell leftLogoCell = new Cell()
                 .add(leftLogo)
                 .setBorder(Border.NO_BORDER)
@@ -470,7 +477,7 @@ public class TestGenerator {
                 .setHorizontalAlignment(HorizontalAlignment.LEFT);
         headerTable.addCell(leftLogoCell);
 
-        // Header title with reduced spacing
+        // Naslov u sredini
         Cell titleCell = new Cell()
                 .add(new Paragraph(subjectName)
                         .setFont(titleFont)
@@ -486,10 +493,10 @@ public class TestGenerator {
                 .setVerticalAlignment(VerticalAlignment.MIDDLE);
         headerTable.addCell(titleCell);
 
-        // Add right faculty logo
-        Image rightLogo = new Image(ImageDataFactory.create("src/main/resources/imgs/tfzr.png"));
-        rightLogo.setWidth(90);
-        rightLogo.setHeight(90);
+        // Desna fakultetska ikona (isti bytes kao za levu)
+        Image rightLogo = new Image(logoData)
+                .setWidth(90)
+                .setHeight(90);
         Cell rightLogoCell = new Cell()
                 .add(rightLogo)
                 .setBorder(Border.NO_BORDER)

@@ -408,22 +408,14 @@ public class QuestionManagerGUI extends JFrame {
         toolBar.setBackground(PRIMARY_COLOR);
         toolBar.setBorder(new EmptyBorder(5, 5, 5, 5));
 
-        JButton newTemplateBtn = createNavButton("Novi Šablon", "/icons/new_template.png");
-        JButton openTemplateBtn = createNavButton("Otvori Šablon", "/icons/open_template.png");
-        JButton saveTemplateBtn = createNavButton("Sačuvaj", "/icons/save_template.png");
+
         JButton addChapterBtn = createNavButton("Dodaj Poglavlje", "/icons/add_chapter.png");
 
-        toolBar.add(newTemplateBtn);
-        toolBar.add(Box.createHorizontalStrut(5));
-        toolBar.add(openTemplateBtn);
-        toolBar.add(Box.createHorizontalStrut(5));
-        toolBar.add(saveTemplateBtn);
-        toolBar.addSeparator();
+
+
         toolBar.add(addChapterBtn);
 
-        newTemplateBtn.addActionListener(e -> createNewTemplate());
-        openTemplateBtn.addActionListener(e -> showOpenTemplateDialog());
-        saveTemplateBtn.addActionListener(e -> saveTemplate());
+
         addChapterBtn.addActionListener(e -> showAddChapterDialog());
 
         return toolBar;
@@ -517,19 +509,6 @@ public class QuestionManagerGUI extends JFrame {
         }
     }
 
-    private void saveTemplate() {
-        try {
-            questionService.saveTemplate();
-            JOptionPane.showMessageDialog(this, "Šablon je uspešno sačuvana!", "Informacija", JOptionPane.INFORMATION_MESSAGE);
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this, ex.getMessage(), "Greška pri snimanju šablone", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private boolean showConfirmDialog(String message) {
-        return JOptionPane.showConfirmDialog(this, message, "Potvrda", 
-            JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
-    }
 
     private void loadChapters() {
         if (chapterComboBox != null) {
